@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 
+const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? "ws://localhost:8080";
+
 export interface Envelope {
   type: string;
   from?: string;
@@ -33,7 +35,7 @@ export function useStartConnection(
     if (!enabled) return;
 
     const params = new URLSearchParams({ room: roomId, name });
-    const ws = new WebSocket(`ws://localhost:8080/ws?${params.toString()}`);
+    const ws = new WebSocket(`${SERVER_URL}/ws?${params.toString()}`);
     wsRef.current = ws;
 
     ws.addEventListener("message", (event) => {
