@@ -1,26 +1,63 @@
 @import "tailwindcss";
 
+/*
+ * Токены из Figma ("Приложение для звонков").
+ * Тема одна — тёмная: #0A0A0A это фон макета, а не dark-mode вариант.
+ *
+ * Полупрозрачные цвета (карточки, secondary-кнопки, обводки) намеренно НЕ
+ * вынесены в токены: в макете это белый/жёлтый с разной прозрачностью поверх
+ * фона, что в Tailwind точнее и читаемее выражается как white/5, white/8,
+ * secondary/8 прямо в компоненте.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --app-bg: #0a0a0a;
+  --app-surface: #161616;
+  --app-accent: #ffb130;
+  --app-accent-hover: #ffba30;
+  --app-secondary: #f1ce1b;
+  --app-danger: #fe3d3d;
+  --app-danger-hover: #f83535;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--app-bg);
+  --color-surface: var(--app-surface);
+  --color-accent: var(--app-accent);
+  --color-accent-hover: var(--app-accent-hover);
+  --color-secondary: var(--app-secondary);
+  --color-danger: var(--app-danger);
+  --color-danger-hover: var(--app-danger-hover);
+
+  /*
+   * В макете шрифт HelveticaNeueCyr — не Google Font, через next/font/google
+   * не подключается. Пока Geist как замена; при наличии файлов шрифта
+   * подключить через next/font/local и заменить значение здесь.
+   */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: var(--app-bg);
+  color: #ffffff;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Тонкий акцентный скроллбар списка участников (экран «более 4х- скролл»). */
+.scrollbar-accent {
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-accent) transparent;
+}
+
+.scrollbar-accent::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-accent::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-accent::-webkit-scrollbar-thumb {
+  background: var(--app-accent);
+  border-radius: 99px;
 }
