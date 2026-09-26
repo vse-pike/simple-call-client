@@ -25,6 +25,7 @@ export interface UseStartConnectionResult {
   myId: string | null;
   isHost: boolean;
   peers: Peer[];
+  roomFull: boolean;
 }
 
 export function useStartConnection(
@@ -36,6 +37,7 @@ export function useStartConnection(
   const [myId, setMyId] = useState<string | null>(null);
   const [isHost, setIsHost] = useState(false);
   const [peers, setPeers] = useState<Peer[]>([]);
+  const [roomFull, setRoomFull] = useState(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -73,6 +75,9 @@ export function useStartConnection(
             setPeers((prev) => prev.filter((peer) => peer.id !== envelope.from));
           }
           break;
+        case "room-full":
+          setRoomFull(true);
+          break;
       }
     });
 
@@ -93,5 +98,5 @@ export function useStartConnection(
     };
   }, [wsRef, roomId, name, enabled]);
 
-  return { myId, isHost, peers };
+  return { myId, isHost, peers, roomFull };
 }

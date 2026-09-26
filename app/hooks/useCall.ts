@@ -7,6 +7,7 @@ export interface UseCallResult {
   myId: string | null;
   isHost: boolean;
   peers: Peer[];
+  roomFull: boolean;
   remoteStream: MediaStream | null;
   remoteAudioMuted: boolean;
   remoteVideoMuted: boolean;
@@ -22,7 +23,7 @@ export function useCall(
 ): UseCallResult {
   const wsRef = useRef<WebSocket | null>(null);
 
-  const { myId, isHost, peers } = useStartConnection(wsRef, roomId, name, enabled);
+  const { myId, isHost, peers, roomFull } = useStartConnection(wsRef, roomId, name, enabled);
   const remotePeerId = peers[0]?.id ?? null;
   const { remoteStream, remoteAudioMuted, remoteVideoMuted } = usePeerConnection(
     wsRef,
@@ -33,5 +34,5 @@ export function useCall(
     videoMuted
   );
 
-  return { myId, isHost, peers, remoteStream, remoteAudioMuted, remoteVideoMuted };
+  return { myId, isHost, peers, roomFull, remoteStream, remoteAudioMuted, remoteVideoMuted };
 }

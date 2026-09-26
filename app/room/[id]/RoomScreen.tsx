@@ -82,6 +82,13 @@ export function RoomScreen({ roomId }: RoomScreenProps) {
     };
   }, []);
 
+  // Комната уже занята (лимит — 2 участника) — сервер отклонил подключение.
+  useEffect(() => {
+    if (call.roomFull) {
+      router.push("/?full=1");
+    }
+  }, [call.roomFull, router]);
+
   if (!myName) {
     return (
       <EntryScreen

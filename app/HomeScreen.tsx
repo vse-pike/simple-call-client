@@ -8,17 +8,20 @@ export function HomeScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const hasLeft = searchParams.get("left") === "1";
+  const isFull = searchParams.get("full") === "1";
 
   function handleCreate(name: string) {
     const roomId = randomRoomId();
     router.push(`/room/${roomId}?name=${encodeURIComponent(name)}`);
   }
 
+  const notice = isFull
+    ? "В комнате уже 2 участника — больше пока нельзя"
+    : hasLeft
+      ? "Вы покинули встречу"
+      : undefined;
+
   return (
-    <EntryScreen
-      submitLabel="Создать"
-      onSubmit={handleCreate}
-      notice={hasLeft ? "Вы покинули встречу" : undefined}
-    />
+    <EntryScreen submitLabel="Создать" onSubmit={handleCreate} notice={notice} />
   );
 }
