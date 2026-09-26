@@ -6,6 +6,8 @@ const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
 export interface UsePeerConnectionResult {
   remoteStream: MediaStream | null;
+  remoteAudioMuted: boolean;
+  remoteVideoMuted: boolean;
 }
 
 function sendEnvelope(
@@ -19,14 +21,43 @@ function sendEnvelope(
   ws.send(JSON.stringify(full));
 }
 
+interface MediaState {
+  audioMuted: boolean;
+  videoMuted: boolean;
+}
+
+function sendMediaState(dc: RTCDataChannel | null, state: MediaState) {
+  if (!dc || dc.readyState !== "open") return;
+  dc.send(JSON.stringify(state));
+}
+
 export function usePeerConnection(
   wsRef: RefObject<WebSocket | null>,
   peerId: string | null,
   myId: string | null,
-  localStream: MediaStream | null
+  localStream: MediaStream | null,
+  audioMuted: boolean,
+  videoMuted: boolean
 ): UsePeerConnectionResult {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [remoteAudioMuted, setRemoteAudioMuted] = useState(false);
+  const [remoteVideoMuted, setRemoteVideoMuted] = useState(false);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
+
+  // pc-эффект ниже создаётся один раз на пару (не зависит от audioMuted/
+  // videoMuted — иначе каждый тоггл камеры пересоздавал бы соединение).
+  // dc.onopen внутри него — асинхронный колбэк, который может выстрелить
+  // сильно позже рендера, где он был объявлен, поэтому не может читать
+  // audioMuted/videoMuted из замыкания напрямую — тянет их из этих рефов.
+  const audioMutedRef = useRef(audioMuted);
+  const videoMutedRef = useRef(videoMuted);
+  useEffect(() => {
+    audioMutedRef.current = audioMuted;
+  }, [audioMuted]);
+  useEffect(() => {
+    videoMutedRef.current = videoMuted;
+  }, [videoMuted]);
 
   useEffect(() => {
     if (!peerId || !myId || !localStream) return;
@@ -45,7 +76,28 @@ export function usePeerConnection(
       }
     };
 
+    function setupDataChannel(dc: RTCDataChannel) {
+      dcRef.current = dc;
+      dc.onopen = () => {
+        sendMediaState(dc, { audioMuted: audioMutedRef.current, videoMuted: videoMutedRef.current });
+      };
+      dc.onmessage = (event) => {
+        try {
+          const state = JSON.parse(event.data) as Partial<MediaState>;
+          if (typeof state.audioMuted === "boolean") setRemoteAudioMuted(state.audioMuted);
+          if (typeof state.videoMuted === "boolean") setRemoteVideoMuted(state.videoMuted);
+        } catch {
+          // ignore
+        }
+      };
+    }
+
+    pc.ondatachannel = (event) => setupDataChannel(event.channel);
+
     async function makeOffer() {
+      // Только offerer создаёт data channel явно — другая сторона получит
+      // его через pc.ondatachannel при обработке этого offer.
+      setupDataChannel(pc.createDataChannel("media-state"));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       sendEnvelope(wsRef, myId, { type: "offer", to: remotePeerId, sdp: offer });
@@ -58,8 +110,15 @@ export function usePeerConnection(
     return () => {
       pc.close();
       pcRef.current = null;
+      dcRef.current = null;
     };
   }, [wsRef, peerId, myId, localStream]);
+
+  // Переключение мика/камеры уже после того, как канал открыт — начальное
+  // состояние при самом открытии канала шлёт dc.onopen выше.
+  useEffect(() => {
+    sendMediaState(dcRef.current, { audioMuted, videoMuted });
+  }, [peerId, myId, audioMuted, videoMuted]);
 
   useEffect(() => {
     const ws = wsRef.current;
@@ -73,8 +132,10 @@ export function usePeerConnection(
         return;
       }
 
+      if (!envelope.from) return;
+
       const pc = pcRef.current;
-      if (!pc || !envelope.from) return;
+      if (!pc) return;
 
       if (envelope.type === "offer") {
         await pc.setRemoteDescription(envelope.sdp as RTCSessionDescriptionInit);
@@ -96,5 +157,5 @@ export function usePeerConnection(
     return () => ws.removeEventListener("message", handleMessage);
   }, [wsRef, myId]);
 
-  return { remoteStream };
+  return { remoteStream, remoteAudioMuted, remoteVideoMuted };
 }

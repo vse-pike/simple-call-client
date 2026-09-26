@@ -1,25 +1,37 @@
 import { useRef } from "react";
 import { usePeerConnection } from "./peerConnectionHooks";
 import { useStartConnection } from "./useStartConnection";
+import type { Peer } from "./useStartConnection";
 
 export interface UseCallResult {
   myId: string | null;
-  peers: string[];
-  peerNames: Record<string, string>;
+  isHost: boolean;
+  peers: Peer[];
   remoteStream: MediaStream | null;
+  remoteAudioMuted: boolean;
+  remoteVideoMuted: boolean;
 }
 
 export function useCall(
   roomId: string,
   name: string,
   enabled: boolean,
-  localStream: MediaStream | null
+  localStream: MediaStream | null,
+  audioMuted: boolean,
+  videoMuted: boolean
 ): UseCallResult {
   const wsRef = useRef<WebSocket | null>(null);
 
-  const { myId, peers, peerNames } = useStartConnection(wsRef, roomId, name, enabled);
-  const remotePeerId = peers[0] ?? null;
-  const { remoteStream } = usePeerConnection(wsRef, remotePeerId, myId, localStream);
+  const { myId, isHost, peers } = useStartConnection(wsRef, roomId, name, enabled);
+  const remotePeerId = peers[0]?.id ?? null;
+  const { remoteStream, remoteAudioMuted, remoteVideoMuted } = usePeerConnection(
+    wsRef,
+    remotePeerId,
+    myId,
+    localStream,
+    audioMuted,
+    videoMuted
+  );
 
-  return { myId, peers, peerNames, remoteStream };
+  return { myId, isHost, peers, remoteStream, remoteAudioMuted, remoteVideoMuted };
 }

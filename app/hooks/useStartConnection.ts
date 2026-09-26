@@ -3,6 +3,12 @@ import type { RefObject } from "react";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? "ws://localhost:8080";
 
+export interface Peer {
+  id: string;
+  name: string;
+  isHost?: boolean;
+}
+
 export interface Envelope {
   type: string;
   from?: string;
@@ -10,15 +16,15 @@ export interface Envelope {
   roomId?: string;
   sdp?: unknown;
   candidate?: unknown;
-  peers?: string[];
+  peers?: Peer[];
   name?: string;
-  peerNames?: Record<string, string>;
+  isHost?: boolean;
 }
 
 export interface UseStartConnectionResult {
   myId: string | null;
-  peers: string[];
-  peerNames: Record<string, string>;
+  isHost: boolean;
+  peers: Peer[];
 }
 
 export function useStartConnection(
@@ -28,8 +34,8 @@ export function useStartConnection(
   enabled: boolean
 ): UseStartConnectionResult {
   const [myId, setMyId] = useState<string | null>(null);
-  const [peers, setPeers] = useState<string[]>([]);
-  const [peerNames, setPeerNames] = useState<Record<string, string>>({});
+  const [isHost, setIsHost] = useState(false);
+  const [peers, setPeers] = useState<Peer[]>([]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -49,21 +55,22 @@ export function useStartConnection(
       switch (envelope.type) {
         case "joined":
           setMyId(envelope.from ?? null);
+          setIsHost(Boolean(envelope.isHost));
           setPeers(envelope.peers ?? []);
-          setPeerNames((prev) => ({ ...prev, ...(envelope.peerNames ?? {}) }));
           break;
         case "peer-joined":
+          // Хостом может быть только тот, кто создал комнату (зашёл первым) —
+          // а раз мы уже получили "joined" раньше него, значит комната
+          // существовала до его прихода. Поэтому у новых пиров isHost всегда
+          // false, сервер его для peer-joined даже не присылает.
           if (envelope.from) {
-            setPeers((prev) => [...prev, envelope.from as string]);
-            if (envelope.name) {
-              const peerId = envelope.from;
-              setPeerNames((prev) => ({ ...prev, [peerId]: envelope.name as string }));
-            }
+            const peerId = envelope.from;
+            setPeers((prev) => [...prev, { id: peerId, name: envelope.name ?? peerId }]);
           }
           break;
         case "peer-left":
           if (envelope.from) {
-            setPeers((prev) => prev.filter((id) => id !== envelope.from));
+            setPeers((prev) => prev.filter((peer) => peer.id !== envelope.from));
           }
           break;
       }
@@ -86,5 +93,5 @@ export function useStartConnection(
     };
   }, [wsRef, roomId, name, enabled]);
 
-  return { myId, peers, peerNames };
+  return { myId, isHost, peers };
 }

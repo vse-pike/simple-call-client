@@ -34,10 +34,10 @@ export function Card({
   const showCaption = Boolean(stream) && !videoMuted;
 
   return (
-    <div className={["flex flex-col gap-2", className].join(" ")}>
+    <div className={["flex h-full flex-col gap-2", className].join(" ")}>
       <div
         className={[
-          "relative flex aspect-video w-full items-center justify-center gap-2 px-5",
+          "relative flex min-h-0 flex-1 w-full items-center justify-center gap-2 px-5",
           "overflow-hidden rounded-[20px] border border-accent bg-white/5",
         ].join(" ")}
       >

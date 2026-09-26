@@ -31,8 +31,8 @@ export function RoomScreen({ roomId }: RoomScreenProps) {
   }, () => showNotice("Не удалось получить доступ к камере или микрофону"));
 
   const stream = mediaStream.stream;
-  const call = useCall(roomId, myName, Boolean(myName), stream);
-  const remotePeerId = call.peers[0] ?? null;
+  const call = useCall(roomId, myName, Boolean(myName), stream, !micOn, !cameraOn);
+  const remotePeer = call.peers[0] ?? null;
 
   function showNotice(message: string) {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
@@ -96,20 +96,20 @@ export function RoomScreen({ roomId }: RoomScreenProps) {
     {
       id: "me",
       name: myName,
-      isHost: !hostName,
+      isHost: call.isHost,
       audioMuted: !micOn,
       videoMuted: !cameraOn,
       stream,
       isSelf: true,
     },
-    ...(remotePeerId
+    ...(remotePeer
       ? [
           {
-            id: remotePeerId,
-            name: call.peerNames[remotePeerId] ?? remotePeerId,
-            isHost: false,
-            audioMuted: false,
-            videoMuted: !call.remoteStream,
+            id: remotePeer.id,
+            name: remotePeer.name,
+            isHost: Boolean(remotePeer.isHost),
+            audioMuted: call.remoteAudioMuted,
+            videoMuted: !call.remoteStream || call.remoteVideoMuted,
             stream: call.remoteStream,
             isSelf: false,
           },
@@ -117,10 +117,15 @@ export function RoomScreen({ roomId }: RoomScreenProps) {
       : []),
   ];
 
-  const isSolo = channelParticipants.length === 1;
-  const tileClassName = isSolo
-    ? "w-full sm:w-[min(70vw,960px)]"
-    : "sm:min-w-[280px] sm:max-w-[480px] sm:flex-1";
+  const count = channelParticipants.length;
+  const gridColsClass =
+    count <= 1
+      ? "grid-cols-1"
+      : count === 2
+        ? "grid-cols-1 sm:grid-cols-2"
+        : count <= 4
+          ? "grid-cols-2"
+          : "grid-cols-2 sm:grid-cols-3";
 
   return (
     <main className="relative flex h-dvh flex-col">
@@ -130,8 +135,10 @@ export function RoomScreen({ roomId }: RoomScreenProps) {
         </div>
       )}
 
-      <div className="scrollbar-accent flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-20 pb-5">
-        <div className="m-auto flex w-full max-w-[320px] flex-wrap justify-center gap-3 sm:max-w-[1200px] sm:gap-5">
+      <div className="flex min-h-0 flex-1 flex-col px-5 pt-20 pb-5">
+        <div
+          className={`m-auto grid h-full w-full max-w-[1200px] auto-rows-fr gap-3 sm:gap-5 ${gridColsClass}`}
+        >
           {channelParticipants.map((participant) => (
             <Card
               key={participant.id}
@@ -141,7 +148,6 @@ export function RoomScreen({ roomId }: RoomScreenProps) {
               isHost={participant.isHost}
               isSelf={participant.isSelf}
               stream={participant.stream}
-              className={tileClassName}
             />
           ))}
         </div>
