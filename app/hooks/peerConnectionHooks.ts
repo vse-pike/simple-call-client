@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { Envelope } from "./useStartConnection";
 
@@ -44,6 +44,40 @@ export function usePeerConnection(
   const [remoteVideoMuted, setRemoteVideoMuted] = useState(false);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
+
+  // Сигнальные сообщения, прилетевшие до создания pc (эффект ниже ждёт
+  // localStream, а getUserMedia может отдать стрим секунды спустя —
+  // оффер и ICE-кандидаты успевают сгореть). Копим и доигрываем после
+  // создания pc. Реф, а не стейт: очередь читают только эффекты,
+  // ре-рендер при пополнении не нужен.
+  const pendingRef = useRef<Envelope[]>([]);
+
+  // Общая логика offer/answer/ice для живых сообщений и для дренажа
+  // буфера. Читает только рефы и аргументы — замыкание не устаревает.
+  // useCallback, чтобы эффекты могли держать её в deps без риска
+  // пересоздания pc на каждом рендере: личность меняется только вместе
+  // с myId, который и так перезапускает оба эффекта.
+  const handleSignaling = useCallback(async (envelope: Envelope) => {
+    if (!envelope.from) return;
+
+    const pc = pcRef.current;
+    if (!pc) return;
+
+    if (envelope.type === "offer") {
+      await pc.setRemoteDescription(envelope.sdp as RTCSessionDescriptionInit);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendEnvelope(wsRef, myId, { type: "answer", to: envelope.from, sdp: answer });
+    }
+
+    if (envelope.type === "answer") {
+      await pc.setRemoteDescription(envelope.sdp as RTCSessionDescriptionInit);
+    }
+
+    if (envelope.type === "ice" && envelope.candidate) {
+      await pc.addIceCandidate(envelope.candidate as RTCIceCandidateInit);
+    }
+  }, [wsRef, myId]);
 
   // pc-эффект ниже создаётся один раз на пару (не зависит от audioMuted/
   // videoMuted — иначе каждый тоггл камеры пересоздавал бы соединение).
@@ -107,12 +141,33 @@ export function usePeerConnection(
       makeOffer();
     }
 
+    // Догоняем то, что накопилось до создания pc. Строго последовательно:
+    // setRemoteDescription/addIceCandidate асинхронны, и кандидат без
+    // установленного remote description кидает исключение. Битый/поздний
+    // кандидат не должен остановить остальную очередь.
+    async function drainPending() {
+      const buffered = pendingRef.current;
+      pendingRef.current = [];
+      for (const envelope of buffered) {
+        if (envelope.from !== remotePeerId) continue;
+        try {
+          await handleSignaling(envelope);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    drainPending();
+
     return () => {
       pc.close();
       pcRef.current = null;
       dcRef.current = null;
+      // Очередь принадлежала умершему соединению — иначе старый оффер
+      // доигрался бы в pc следующего пира.
+      pendingRef.current = [];
     };
-  }, [wsRef, peerId, myId, localStream]);
+  }, [wsRef, peerId, myId, localStream, handleSignaling]);
 
   // Переключение мика/камеры уже после того, как канал открыт — начальное
   // состояние при самом открытии канала шлёт dc.onopen выше.
@@ -135,27 +190,17 @@ export function usePeerConnection(
       if (!envelope.from) return;
 
       const pc = pcRef.current;
-      if (!pc) return;
-
-      if (envelope.type === "offer") {
-        await pc.setRemoteDescription(envelope.sdp as RTCSessionDescriptionInit);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        sendEnvelope(wsRef, myId, { type: "answer", to: envelope.from, sdp: answer });
+      if (!pc) {
+        pendingRef.current.push(envelope);
+        return;
       }
 
-      if (envelope.type === "answer") {
-        await pc.setRemoteDescription(envelope.sdp as RTCSessionDescriptionInit);
-      }
-
-      if (envelope.type === "ice" && envelope.candidate) {
-        await pc.addIceCandidate(envelope.candidate as RTCIceCandidateInit);
-      }
+      await handleSignaling(envelope);
     }
 
     ws.addEventListener("message", handleMessage);
     return () => ws.removeEventListener("message", handleMessage);
-  }, [wsRef, myId]);
+  }, [wsRef, myId, handleSignaling]);
 
   return { remoteStream, remoteAudioMuted, remoteVideoMuted };
 }
